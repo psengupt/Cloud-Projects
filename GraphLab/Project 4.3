@@ -1,0 +1,40 @@
+upload 15619_14demo.pem
+
+cd /home/ubuntu/.ssh
+
+vi config
+
+Host *.compute-1.amazonaws.com
+    IdentityFile /home/ubuntu/15619_14demo.pem
+	
+chmod 400 15619_14demo.pem // change for all three IPs
+ssh  ubuntu@ec2-52-5-211-197.compute-1.amazonaws.com// ssh ing into the other instances - do it in home directory itself - /home/ubuntu
+
+vi machines // do in folder  /home/ubuntu but only for one instance
+
+wget http://s3.amazonaws.com/s15-p43-dataset/enwiki-2013-arc //getting the data from s3
+
+cd graphlab/release/toolkits/graph_analytics
+
+mpiexec -hostfile ~/machines -n 3 ./pagerank --graph /home/ubuntu/enwiki-2013-arc.1  --format snap  --saveprefix /home/ubuntu/file1
+
+cat file1.1>> file1.2
+
+scp ubuntu@ec2-52-6-204-219.compute-1.amazonaws.com:/home/ubuntu/file1.10_of_12 /home/ubuntu
+
+sort -t$'\t' -k2nr file1.2 > file
+
+ head -10 file
+
+ 
+ cd graphlab/apps/bfs
+ 
+ cd /a.path.size()
+ 
+ 
+
+
+
+
+
+

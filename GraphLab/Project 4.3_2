@@ -1,0 +1,205 @@
+/**
+  2  * This is the skeleton code for bfs.
+  3  * Note the save and load functions in each struct and class are used to serialize
+  4  * and deserialize the object. If you add members with non-primitive data types in
+  5  * a struct or class, you need to implement the save and load functions. For more
+  6  * information, please see the serialization section in the API documentation of
+  7  * GraphLab.
+  8  */
+  9
+ 10 #include <vector>
+ 11 #include <string>
+ 12 #include <fstream>
+ 13
+ 14 #include <graphlab.hpp>
+ 15
+ 16 const int MAX_LEN = 15;
+ 17
+ 18 /**
+ 19  * The vertex data type and also the message type
+ 20  */
+ 21 struct vertex_data {
+		std::vector<int> path;
+ 23   // add data members here
+		//vertex_data(float value = ) : value(value),level(0){}
+ 24
+ 25   // GraphLab will use this function to merge messages
+ 26   vertex_data& operator+=(const vertex_data& other) {
+ 27         // Fill your code here
+			for(int i=0; i<other.path.size(); i++){
+			if(other.path[i]> path[i]){
+ 28         return *this;
+			}
+		}
+ 29   }
+ 30
+ 31   void save(graphlab::oarchive& oarc) const {
+ 32         // Fill your code here
+		oarc << path;
+			
+ 33   }
+ 34
+ 35   void load(graphlab::iarchive& iarc) {
+ 36         // Fill your code here
+		iarc >> path;
+ 37   }
+	};
+ 39
+ 40 /**
+ 41  * Definition of graph
+ 42  */
+ 43 typedef graphlab::distributed_graph<vertex_data, graphlab::empty> graph_type;
+ 44
+ 45 /* The current id we are processing */
+		 int id;
+ 47
+ 48 /**
+ 49  * The bfs program.
+ 50  */
+ 51 class bfs :
+ 52   public graphlab::ivertex_program<graph_type,
+ 53                                    graphlab::empty,
+ 54                                    vertex_data>  {
+ 55 private:
+ 56     vertex_data msg;
+		bool changed;
+ 57 public:
+ 58
+ 59   void init(icontext_type& context, const vertex_type& vertex,
+ 60             const message_type& msg) {
+ 61         this->msg = msg;
+ 62         // Fill your code here
+			//vertex.data().path.push_back(vertex.id);
+			this->msg.path.push_back(id);
+ 63   }
+ 64
+ 65   // no gather required
+ 66   edge_dir_type gather_edges(icontext_type& context,
+ 67                              const vertex_type& vertex) const {
+ 68         return graphlab::NO_EDGES;
+ 69   }
+ 70
+ 71
+ 72   void apply(icontext_type& context, vertex_type& vertex,
+ 73              const gather_type& gather_result) {
+ 74       changed = false;// Fill your code here
+		  vertex.data() = this->msg;
+		  changed = true;}
+ 
+ }
+ 76
+ 77   // do scatter on all the in-edges
+ 78   edge_dir_type scatter_edges(icontext_type& context,
+ 79                              const vertex_type& vertex) const {
+ 80         return graphlab::IN_EDGES;
+ 81   }
+	void scatter(icontext_type& context, const vertex_type& vertex,
+ 84                edge_type& edge) const {
+ 85         // Fill your code here
+		if((edge.source.data().path.size()==1))
+		{
+			context.signal(edge.source(), msg);
+		}
+ 86   }
+ 87
+ 88   void save(graphlab::oarchive& oarc) const {
+ 89         // Fill your code here
+			oarc << msg;
+ 90   }
+ 91
+ 92   void load(graphlab::iarchive& iarc) {
+ 93         // Fill your code here
+			iarc >> msg;
+ 94   }
+ 95 };
+ 96
+ 97 void initialize_vertex(graph_type::vertex_type& vertex) {
+ 98     // Fill your code here
+ 99     // You should initialize the vertex data here
+		vertex.data().path.clear();
+100 }
+101
+102 struct shortest_path_writer {
+103   std::string save_vertex(const graph_type::vertex_type& vtx) {
+104     // You should print the shortest path here
+		std::stringstream strm;
+		strm << vtx.id() << "\t";
+		for(int i=vtx.path.size()-1;i>=0;i--)
+		{
+			 strm<< vtx.data().path[i] << "\t";
+			
+		}
+		return strm.str();
+105   }
+106
+107   std::string save_edge(graph_type::edge_type e) { return ""; }
+108 };
+109
+110 int main(int argc, char** argv) {
+111   // Initialize control plain using mpi
+112   graphlab::mpi_tools::init(argc, argv);
+113   graphlab::distributed_control dc;
+114   global_logger().set_log_level(LOG_INFO);
+115		dc.cout() << "the id is" << id <<"\n";
+116   // Parse command line options -----------------------------------------------
+117   graphlab::command_line_options
+ clopts("bfs algorithm");
+119   std::string graph_dir;
+120   std::string format = "snap";
+121   std::string saveprefix;
+122   std::string top_ids;
+123
+124   clopts.attach_option("graph", graph_dir,
+125                        "The graph file.");
+126   clopts.attach_option("format", format,
+127                        "graph format");
+128   clopts.attach_option("top", top_ids,
+129                        "The file which contains top 10 ids");
+130   clopts.attach_option("saveprefix", saveprefix,
+131                        "If set, will save the result to a "
+132                        "sequence of files with prefix saveprefix");
+133
+134   if(!clopts.parse(argc, argv)) {
+135     dc.cout() << "Error in parsing command line arguments." << std::endl;
+136     return EXIT_FAILURE;
+137   }
+138
+139
+140   // Build the graph
+141   graph_type graph(dc, clopts);
+142
+143   dc.cout() << "Loading graph in format: "<< format << std::endl;
+144   graph.load_format(graph_dir, format);
+145
+146   // must call finalize before querying the graph
+147   graph.finalize();
+148   dc.cout() << "#vertices:  " << graph.num_vertices() << std::endl
+149             << "#edges:     " << graph.num_edges() << std::endl;
+150
+151   graphlab::synchronous_engine<bfs> engine(dc, graph, clopts);
+		char id_str[MAX_LEN];
+153   std::ifstream fin(top_ids.c_str());
+154   while (fin >> id) {
+155     graph.transform_vertices(initialize_vertex);
+156
+157     /*
+158      * add your implementation here
+159      */
+160
+161     std::string tmp = saveprefix;
+162     tmp += '_';
+163     sprintf(id_str, "%d", id);
+164     tmp += id_str;
+165     graph.save(tmp,
+166             shortest_path_writer(),
+167             false,   // do not gzip
+168             true,    // save vertices
+169             false,   // do not save edges
+170             1);      // one output file per machine
+171   }
+172   fin.close();
+173
+174   // Tear-down communication layer and quit
+175   graphlab::mpi_tools::finalize();
+176   return EXIT_SUCCESS;
+177 } // End of main
