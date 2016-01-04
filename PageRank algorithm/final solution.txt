@@ -1,0 +1,76 @@
+#clean of xml tab, new line, to lower case
+val tsvl5 = file.map(_.replaceAll("\\<.*\\>","").replace("\\n","").replace("^[A-Za-z]", "").split("\t")(1).toLowerCase)
+#iterating through all members
+tsvl5.toArray().foreach(line=>println(line))
+val file= sc.textFile("s3n://s15-p42-part1-easy/data/")
+val tsvl3 = file.map(_.replaceAll("<[^>]*>"," ").replaceAll("\\\\r\\\\n|\\\\n"," ").trim().split("\t"))
+var tsvl10 =  tsvl3.flatMap(title=>title(3).toLowerCase.replaceAll("[^a-zA-Z]+", " ").trim().split(" ").map(word=>(word+":"+title(1),1))).reduceByKey(_+_)
+val tsvl11 = tsvl10.map(x=>(x._1.split(":")(0),1)).reduceByKey(_+_)
+var total = 0.0
+total = file.distinct().count().toFloat
+var tsvl12 = tsvl10.map({case(k,v)=>(k.split(":")(0), (k.split(":")(1),v))})
+val tsvl13 = tsvl11.join(tsvl12)
+
+val tsvl14 = tsvl13.map({case(k,(v,(w,x))) => (k, w, x*Math.log(total/v))})
+
+val tsvl15 = tsvl14.filter(x=>x._1=="cloud")
+val tsvl16 = tsvl15.sortBy(r=>(-r._3, r._2)).take(100)
+tsvl16.foreach(line=>println(line._2+"\t"+line._3))
+
+
+###########################PageRank##################################################################################################################
+val lines = sc.textFile("s3n://s15-p42-part2/wikipedia_arcs")
+val lookup = sc.textFile("s3n://s15-p42-part2/wikipedia_mapping")
+val readLines = lookup.map(_.split("\t"))
+val Readl = readLines.map(title=>(title(0),title(1)))
+#creating a map out of the values in the file with the first column as the key and the second column has the neighbours
+val links = lines.map{ s =>
+      val parts = s.split("\t")
+      (parts(0), parts(1))
+    }.distinct().groupByKey().cache()
+#adding weights to all nodes that are present in the values
+ var ranks = links.mapValues(v => 1.0)
+ #getting dangling
+ #getting all the values
+ val inter = lines.map{ s =>
+      val parts = s.split("\t")
+      (parts(0), parts(1))
+    }
+ val map_v=inter.map({case(k,v) => v}).distinct()
+ val map_key = links.map({case(k,v) => k})
+ val map_d=map_v.subtract(map_key)
+ #count of all vertices
+ var va = map_v.count()
+ var d = map_d.count().toFloat
+ val dang = map_d.map(v=>(v,1))
+ var va = map_v.count()
+var d = map_d.count()
+ #adding weights to all nodes that are present in the values
+ var ranks = links.mapValues(v => 1.0)
+ var x= 1.0
+ #getting the contributions of each URL
+ for (i <- 1 to 10) {
+      val contribs = links.join(ranks).values.flatMap{ case (urls, rank) =>
+        val size = urls.size		
+		 	 
+        urls.map(url => (url, ((rank / size) +(d/va)))) 
+		
+      }
+	  #count of all vertices
+		val dang = map_d.map(v=>(v,x+d/va))
+	  x=x+d/va
+		d = d*(x)
+      ranks = contribs.reduceByKey(_ + _).mapValues(0.15 + 0.85 * _)
+    }
+	
+	
+	#resulting array for getting the document names
+	val result = Readl.join(ranks)
+	val result_docs = result.map({case(k,(w,x)) => (w, x)})
+	val result_docs_sort = result_docs.sortBy(r=>(-r._2, r._1)).take(100)
+	#printing the outputs
+result_docs_sort.toArray().foreach(tup => println(tup._1 + " has rank: " + tup._2 + "."))
+
+
+
+
